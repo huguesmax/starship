@@ -1,14 +1,14 @@
-# Shuttle
+# Shuttle --> StarShip
 
 [![Join the chat at https://gitter.im/fitztrev/shuttle](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/fitztrev/shuttle?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-A simple shortcut menu for macOS
+A simple shortcut menu for macOS upgraded by HuguesMAX
 
 [http://fitztrev.github.io/shuttle/](http://fitztrev.github.io/shuttle/)
 
 ![How Shuttle works](https://raw.githubusercontent.com/fitztrev/shuttle/gh-pages/images/how-shuttle-works.gif)
 
-**Sidenote**: *Many people ask, so here's how I have [my terminal setup](https://github.com/fitztrev/shuttle/wiki/My-Terminal-Prompt).*
+
 
 ## Built-in Configuration Editor
 
@@ -110,14 +110,7 @@ See the [Wiki](https://github.com/fitztrev/shuttle/wiki) pages.
 
 ## Roadmap
 
-* Cloud hosting integration
-  * AWS, Rackspace, Digital Ocean, etc
-  * Using their APIs, automatically add all of your machines to the menu
-* ~~Preferences panel for easier configuration~~ **Done** — see [Built-in Configuration Editor](#built-in-configuration-editor)
-* Update notifications
-* Keyboard hotkeys
-  * Open menu
-  * Select host option within menu
+* No Roadmap, if you need something, ask me.
 
 ## Contributors
 
