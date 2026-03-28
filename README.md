@@ -10,6 +10,25 @@ A simple shortcut menu for macOS
 
 **Sidenote**: *Many people ask, so here's how I have [my terminal setup](https://github.com/fitztrev/shuttle/wiki/My-Terminal-Prompt).*
 
+## Built-in Configuration Editor
+
+Shuttle now includes a visual configuration editor — no need to edit JSON by hand.
+
+Open it from **Settings → Edit** in the Shuttle menu.
+
+![Shuttle Configuration Editor](images/config-editor.png)
+
+### Features
+
+- **Global settings** — Terminal, iTerm version, open-in mode, default theme, launch at login
+- **Hosts tree** — Outline view with folders and hosts, fully editable
+- **Drag & drop** — Reorder hosts and move them between folders by dragging (grip handle ☰ shown on each row)
+- **Duplicate** — Clone any host or folder (with all its children) in one click
+- **Detail panel** — Edit name, command, theme, title, and terminal mode for the selected item
+- **Save** — Writes changes to disk without closing the window, so you can keep editing
+- **Cancel** — Discards unsaved changes by reloading the config from disk
+- **Quit** — Closes the editor window
+
 ## Installation
 
 1. Download [Shuttle](http://fitztrev.github.io/shuttle/)
@@ -94,7 +113,7 @@ See the [Wiki](https://github.com/fitztrev/shuttle/wiki) pages.
 * Cloud hosting integration
   * AWS, Rackspace, Digital Ocean, etc
   * Using their APIs, automatically add all of your machines to the menu
-* Preferences panel for easier configuration
+* ~~Preferences panel for easier configuration~~ **Done** — see [Built-in Configuration Editor](#built-in-configuration-editor)
 * Update notifications
 * Keyboard hotkeys
   * Open menu

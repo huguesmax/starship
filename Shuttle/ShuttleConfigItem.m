@@ -61,4 +61,23 @@
     }
 }
 
+- (instancetype)deepCopy {
+    ShuttleConfigItem *copy = [[ShuttleConfigItem alloc] init];
+    copy.itemType = self.itemType;
+    copy.name = [self.name copy];
+    copy.cmd = [self.cmd copy];
+    copy.theme = [self.theme copy];
+    copy.title = [self.title copy];
+    copy.inTerminal = [self.inTerminal copy];
+    if (self.children) {
+        copy.children = [NSMutableArray arrayWithCapacity:self.children.count];
+        for (ShuttleConfigItem *child in self.children) {
+            ShuttleConfigItem *childCopy = [child deepCopy];
+            childCopy.parent = copy;
+            [copy.children addObject:childCopy];
+        }
+    }
+    return copy;
+}
+
 @end

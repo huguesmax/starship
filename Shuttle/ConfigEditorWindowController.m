@@ -7,6 +7,8 @@
 #import "ShuttleConfigItem.h"
 #import "LaunchAtLoginController.h"
 
+static NSPasteboardType const ShuttleConfigItemDragType = @"com.shuttle.configitem";
+
 @interface ConfigEditorWindowController ()
 
 // Global settings
@@ -37,15 +39,20 @@
 // Buttons
 @property (strong) NSButton *addHostButton;
 @property (strong) NSButton *addFolderButton;
+@property (strong) NSButton *duplicateButton;
 @property (strong) NSButton *removeButton;
 @property (strong) NSButton *saveButton;
 @property (strong) NSButton *cancelButton;
+@property (strong) NSButton *quitButton;
 
 // Data
 @property (copy)   NSString *configPath;
 @property (strong) NSMutableDictionary *configDict;
 @property (strong) NSMutableArray<ShuttleConfigItem *> *rootItems;
 @property (weak)   ShuttleConfigItem *selectedItem;
+
+// Drag & drop
+@property (strong) ShuttleConfigItem *draggedItem;
 
 @end
 
@@ -151,6 +158,11 @@
     [self.outlineView setOutlineTableColumn:column];
     self.outlineView.columnAutoresizingStyle = NSTableViewLastColumnOnlyAutoresizingStyle;
 
+    // Enable drag & drop
+    [self.outlineView registerForDraggedTypes:@[ShuttleConfigItemDragType]];
+    self.outlineView.draggingDestinationFeedbackStyle = NSTableViewDraggingDestinationFeedbackStyleSourceList;
+    [self.outlineView setVerticalMotionCanBeginDrag:YES];
+
     self.scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 300, 200)];
     self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
     self.scrollView.documentView = self.outlineView;
@@ -163,10 +175,13 @@
     // ── Buttons under outline ──
     self.addHostButton = [self makeSmallButton:@"+ Host" action:@selector(addHost:)];
     self.addFolderButton = [self makeSmallButton:@"+ Folder" action:@selector(addFolder:)];
+    self.duplicateButton = [self makeSmallButton:@"Duplicate" action:@selector(duplicateItem:)];
+    self.duplicateButton.enabled = NO;
     self.removeButton = [self makeSmallButton:@"- Remove" action:@selector(removeItem:)];
     self.removeButton.enabled = NO;
     [cv addSubview:self.addHostButton];
     [cv addSubview:self.addFolderButton];
+    [cv addSubview:self.duplicateButton];
     [cv addSubview:self.removeButton];
 
     // ── Detail fields (right side) ──
@@ -197,7 +212,11 @@
         [cv addSubview:v];
     }
 
-    // ── Cancel / Save ──
+    // ── Quit / Cancel / Save ──
+    self.quitButton = [NSButton buttonWithTitle:@"Quit" target:self action:@selector(quit:)];
+    self.quitButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [cv addSubview:self.quitButton];
+
     self.cancelButton = [NSButton buttonWithTitle:@"Cancel" target:self action:@selector(cancel:)];
     self.cancelButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.cancelButton.keyEquivalent = @"\033";
@@ -274,8 +293,12 @@
         [self.addFolderButton.leadingAnchor constraintEqualToAnchor:self.addHostButton.trailingAnchor constant:4],
         [self.addFolderButton.heightAnchor constraintEqualToConstant:24],
 
+        [self.duplicateButton.centerYAnchor constraintEqualToAnchor:self.addHostButton.centerYAnchor],
+        [self.duplicateButton.leadingAnchor constraintEqualToAnchor:self.addFolderButton.trailingAnchor constant:4],
+        [self.duplicateButton.heightAnchor constraintEqualToConstant:24],
+
         [self.removeButton.centerYAnchor constraintEqualToAnchor:self.addHostButton.centerYAnchor],
-        [self.removeButton.leadingAnchor constraintEqualToAnchor:self.addFolderButton.trailingAnchor constant:4],
+        [self.removeButton.leadingAnchor constraintEqualToAnchor:self.duplicateButton.trailingAnchor constant:4],
         [self.removeButton.heightAnchor constraintEqualToConstant:24],
 
         // ── Detail fields (right side, aligned to scroll view top) ──
@@ -318,17 +341,21 @@
         [self.detailInTerminalPopup.leadingAnchor constraintEqualToAnchor:self.detailInTerminalLabel.trailingAnchor constant:4],
         [self.detailInTerminalPopup.trailingAnchor constraintEqualToAnchor:cv.trailingAnchor constant:-m],
 
-        // ── Cancel / Save at bottom ──
-        [self.saveButton.bottomAnchor constraintEqualToAnchor:cv.bottomAnchor constant:-m],
-        [self.saveButton.trailingAnchor constraintEqualToAnchor:cv.trailingAnchor constant:-m],
+        // ── Cancel / Save / Quit at bottom-right ──
+        [self.quitButton.bottomAnchor constraintEqualToAnchor:cv.bottomAnchor constant:-m],
+        [self.quitButton.trailingAnchor constraintEqualToAnchor:cv.trailingAnchor constant:-m],
+        [self.quitButton.widthAnchor constraintGreaterThanOrEqualToConstant:80],
+
+        [self.saveButton.centerYAnchor constraintEqualToAnchor:self.quitButton.centerYAnchor],
+        [self.saveButton.trailingAnchor constraintEqualToAnchor:self.quitButton.leadingAnchor constant:-8],
         [self.saveButton.widthAnchor constraintGreaterThanOrEqualToConstant:80],
 
-        [self.cancelButton.centerYAnchor constraintEqualToAnchor:self.saveButton.centerYAnchor],
+        [self.cancelButton.centerYAnchor constraintEqualToAnchor:self.quitButton.centerYAnchor],
         [self.cancelButton.trailingAnchor constraintEqualToAnchor:self.saveButton.leadingAnchor constant:-8],
 
         // ── Scroll view bottom: above the buttons row ──
         [self.scrollView.bottomAnchor constraintEqualToAnchor:self.addHostButton.topAnchor constant:-4],
-        [self.addHostButton.bottomAnchor constraintEqualToAnchor:self.saveButton.topAnchor constant:-12],
+        [self.addHostButton.bottomAnchor constraintEqualToAnchor:self.quitButton.topAnchor constant:-12],
     ]];
 }
 
@@ -434,12 +461,168 @@
     return ((ShuttleConfigItem *)item).itemType == ShuttleConfigItemTypeFolder;
 }
 
-- (id)outlineView:(NSOutlineView *)outlineView objectValueForTableColumn:(NSTableColumn *)tableColumn byItem:(id)item {
+- (NSView *)outlineView:(NSOutlineView *)outlineView viewForTableColumn:(NSTableColumn *)tableColumn item:(id)item {
     ShuttleConfigItem *node = (ShuttleConfigItem *)item;
-    if (node.itemType == ShuttleConfigItemTypeFolder) {
-        return [NSString stringWithFormat:@"\U0001F4C1 %@", node.name ?: @"(unnamed)"];
+
+    NSTableCellView *cell = [outlineView makeViewWithIdentifier:@"NameCell" owner:self];
+    if (!cell) {
+        cell = [[NSTableCellView alloc] initWithFrame:NSZeroRect];
+        cell.identifier = @"NameCell";
+
+        // Drag handle label (grip icon)
+        NSTextField *grip = [NSTextField labelWithString:@"\u2630"];
+        grip.identifier = @"grip";
+        grip.font = [NSFont systemFontOfSize:11];
+        grip.textColor = [NSColor tertiaryLabelColor];
+        grip.translatesAutoresizingMaskIntoConstraints = NO;
+        [cell addSubview:grip];
+
+        // Text field for the name
+        NSTextField *tf = [NSTextField labelWithString:@""];
+        tf.translatesAutoresizingMaskIntoConstraints = NO;
+        tf.lineBreakMode = NSLineBreakByTruncatingTail;
+        [cell addSubview:tf];
+        cell.textField = tf;
+
+        [NSLayoutConstraint activateConstraints:@[
+            [grip.leadingAnchor constraintEqualToAnchor:cell.leadingAnchor constant:2],
+            [grip.centerYAnchor constraintEqualToAnchor:cell.centerYAnchor],
+            [grip.widthAnchor constraintEqualToConstant:14],
+            [tf.leadingAnchor constraintEqualToAnchor:grip.trailingAnchor constant:2],
+            [tf.trailingAnchor constraintEqualToAnchor:cell.trailingAnchor constant:-2],
+            [tf.centerYAnchor constraintEqualToAnchor:cell.centerYAnchor],
+        ]];
     }
-    return node.name ?: @"(unnamed)";
+
+    NSString *displayName;
+    if (node.itemType == ShuttleConfigItemTypeFolder) {
+        displayName = [NSString stringWithFormat:@"\U0001F4C1 %@", node.name ?: @"(unnamed)"];
+    } else {
+        displayName = node.name ?: @"(unnamed)";
+    }
+    cell.textField.stringValue = displayName;
+
+    return cell;
+}
+
+#pragma mark - Drag & Drop
+
+- (id<NSPasteboardWriting>)outlineView:(NSOutlineView *)outlineView
+               pasteboardWriterForItem:(id)item {
+    self.draggedItem = (ShuttleConfigItem *)item;
+    NSPasteboardItem *pbItem = [[NSPasteboardItem alloc] init];
+    [pbItem setString:((ShuttleConfigItem *)item).name ?: @""
+              forType:ShuttleConfigItemDragType];
+    return pbItem;
+}
+
+- (NSDragOperation)outlineView:(NSOutlineView *)outlineView
+                  validateDrop:(id<NSDraggingInfo>)info
+                  proposedItem:(id)item
+            proposedChildIndex:(NSInteger)index {
+    if (!self.draggedItem) return NSDragOperationNone;
+
+    // Don't allow drop on a specific row (only between rows or on folders)
+    if (index == NSOutlineViewDropOnItemIndex) {
+        // Allow dropping ON a folder (will append inside)
+        if (item && ((ShuttleConfigItem *)item).itemType == ShuttleConfigItemTypeFolder) {
+            // But not on itself or its own descendants
+            if (item == self.draggedItem || [self item:(ShuttleConfigItem *)item isDescendantOf:self.draggedItem]) {
+                return NSDragOperationNone;
+            }
+            return NSDragOperationMove;
+        }
+        return NSDragOperationNone;
+    }
+
+    // Prevent dropping into own subtree
+    if (item && [self item:(ShuttleConfigItem *)item isDescendantOf:self.draggedItem]) {
+        return NSDragOperationNone;
+    }
+    // Prevent dropping a folder into itself
+    if (item == self.draggedItem) {
+        return NSDragOperationNone;
+    }
+
+    return NSDragOperationMove;
+}
+
+- (BOOL)outlineView:(NSOutlineView *)outlineView
+          acceptDrop:(id<NSDraggingInfo>)info
+                item:(id)targetItem
+          childIndex:(NSInteger)index {
+    if (!self.draggedItem) return NO;
+
+    [self commitDetailEdits];
+
+    ShuttleConfigItem *dragged = self.draggedItem;
+    self.draggedItem = nil;
+
+    // Remove from old location
+    NSMutableArray *oldParentArray = dragged.parent ? dragged.parent.children : self.rootItems;
+    NSUInteger oldIndex = [oldParentArray indexOfObjectIdenticalTo:dragged];
+    if (oldIndex == NSNotFound) return NO;
+    [oldParentArray removeObjectAtIndex:oldIndex];
+
+    // Determine new location
+    NSMutableArray *newParentArray;
+    ShuttleConfigItem *newParent;
+    if (targetItem) {
+        newParent = (ShuttleConfigItem *)targetItem;
+        newParentArray = newParent.children;
+    } else {
+        newParent = nil;
+        newParentArray = self.rootItems;
+    }
+
+    // If dropping ON an item (NSOutlineViewDropOnItemIndex), append at end
+    NSUInteger insertIndex;
+    if (index == NSOutlineViewDropOnItemIndex) {
+        insertIndex = newParentArray.count;
+    } else {
+        // Adjust index if dragged item was removed from the same array before this index
+        insertIndex = (NSUInteger)index;
+        if (newParentArray == oldParentArray && oldIndex < insertIndex) {
+            insertIndex--;
+        }
+    }
+
+    if (insertIndex > newParentArray.count) {
+        insertIndex = newParentArray.count;
+    }
+
+    [newParentArray insertObject:dragged atIndex:insertIndex];
+    dragged.parent = newParent;
+
+    [self.outlineView reloadData];
+    [self.outlineView expandItem:nil expandChildren:YES];
+
+    // Re-select the moved item
+    NSInteger row = [self.outlineView rowForItem:dragged];
+    if (row >= 0) {
+        [self.outlineView selectRowIndexes:[NSIndexSet indexSetWithIndex:row]
+                      byExtendingSelection:NO];
+    }
+
+    return YES;
+}
+
+- (void)outlineView:(NSOutlineView *)outlineView
+    draggingSession:(NSDraggingSession *)session
+   endedAtPoint:(NSPoint)screenPoint
+          operation:(NSDragOperation)operation {
+    self.draggedItem = nil;
+}
+
+- (BOOL)item:(ShuttleConfigItem *)candidate isDescendantOf:(ShuttleConfigItem *)ancestor {
+    if (ancestor.itemType != ShuttleConfigItemTypeFolder) return NO;
+    for (ShuttleConfigItem *child in ancestor.children) {
+        if (child == candidate) return YES;
+        if (child.itemType == ShuttleConfigItemTypeFolder && [self item:candidate isDescendantOf:child]) {
+            return YES;
+        }
+    }
+    return NO;
 }
 
 #pragma mark - NSOutlineViewDelegate
@@ -488,6 +671,7 @@
     }
 
     self.removeButton.enabled = hasSelection;
+    self.duplicateButton.enabled = hasSelection;
 }
 
 - (void)commitDetailEdits {
@@ -565,6 +749,34 @@
     }
 }
 
+- (IBAction)duplicateItem:(id)sender {
+    [self commitDetailEdits];
+    ShuttleConfigItem *item = self.selectedItem;
+    if (!item) return;
+
+    ShuttleConfigItem *copy = [item deepCopy];
+    copy.name = [NSString stringWithFormat:@"%@ (copy)", copy.name ?: @""];
+
+    // Insert right after the original in the same parent array
+    NSMutableArray *parentArray = item.parent ? item.parent.children : self.rootItems;
+    NSUInteger idx = [parentArray indexOfObjectIdenticalTo:item];
+    if (idx != NSNotFound && idx + 1 <= parentArray.count) {
+        [parentArray insertObject:copy atIndex:idx + 1];
+    } else {
+        [parentArray addObject:copy];
+    }
+    copy.parent = item.parent;
+
+    [self.outlineView reloadData];
+    [self.outlineView expandItem:nil expandChildren:YES];
+
+    NSInteger row = [self.outlineView rowForItem:copy];
+    if (row >= 0) {
+        [self.outlineView selectRowIndexes:[NSIndexSet indexSetWithIndex:row]
+                      byExtendingSelection:NO];
+    }
+}
+
 - (IBAction)removeItem:(id)sender {
     ShuttleConfigItem *item = self.selectedItem;
     if (!item) return;
@@ -617,8 +829,6 @@
 
         LaunchAtLoginController *launchController = [[LaunchAtLoginController alloc] init];
         launchController.launchAtLogin = (self.launchAtLoginCheckbox.state == NSControlStateValueOn);
-
-        [self.window close];
     } else {
         NSAlert *alert = [[NSAlert alloc] init];
         alert.messageText = @"Save failed";
@@ -628,6 +838,16 @@
 }
 
 - (IBAction)cancel:(id)sender {
+    // Reload config from disk, discarding unsaved changes
+    [self loadConfig];
+    [self populateGlobalSettings];
+    [self.outlineView reloadData];
+    [self.outlineView expandItem:nil expandChildren:YES];
+    self.selectedItem = nil;
+    [self updateDetailPanel];
+}
+
+- (IBAction)quit:(id)sender {
     [self.window close];
 }
 

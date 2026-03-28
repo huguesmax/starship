@@ -33,4 +33,7 @@ typedef NS_ENUM(NSInteger, ShuttleConfigItemType) {
 + (NSMutableArray<ShuttleConfigItem *> *)itemsFromJSONArray:(NSArray *)jsonArray;
 - (id)toJSON;
 
+// Deep copy (for duplication)
+- (instancetype)deepCopy;
+
 @end
