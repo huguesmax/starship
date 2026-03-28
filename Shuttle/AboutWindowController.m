@@ -50,7 +50,7 @@ NSDictionary *plistDict;
     [aboutWindow.window setTitle:aboutTitle];
     
     //Build the string for the application name. appName - tagline
-    NSString *progName = [NSString stringWithFormat:@"%@%@", applicationName, NSLocalizedString(@" - A simple SSH shortcut menu.",nil)];
+    NSString *progName = [NSString stringWithFormat:@"%@%@", applicationName, NSLocalizedString(@" - A simple shortcut menu for macOS.",nil)];
     [appName setStringValue:progName];
     
     //Build the string for the version. Version: $build
