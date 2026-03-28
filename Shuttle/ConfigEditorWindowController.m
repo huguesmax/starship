@@ -54,7 +54,7 @@
 #pragma mark - Initialization
 
 - (instancetype)initWithConfigPath:(NSString *)configPath {
-    NSRect frame = NSMakeRect(0, 0, 720, 560);
+    NSRect frame = NSMakeRect(0, 0, 1200, 800);
     NSWindowStyleMask styleMask = NSWindowStyleMaskTitled
                                 | NSWindowStyleMaskClosable
                                 | NSWindowStyleMaskMiniaturizable
