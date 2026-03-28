@@ -15,8 +15,79 @@ A simple shortcut menu for macOS
 1. Download [Shuttle](http://fitztrev.github.io/shuttle/)
 2. Copy to Applications
 
+## Building from Source (macOS)
+
+### Prerequisites
+
+| Dependency | Version | Notes |
+|---|---|---|
+| **macOS** | 10.9+ (target), 13+ recommended for building | Native Cocoa application |
+| **Xcode** | 10.1+ (project format), 15+ recommended | Full IDE required (not just Command Line Tools) |
+| **Apple Developer Account** | Free or paid | Required for code signing |
+
+### System Frameworks (included with macOS/Xcode)
+
+Shuttle uses only native Apple frameworks — no external dependencies or package managers:
+
+- **Cocoa.framework** — Main UI framework (AppKit + Foundation + CoreData)
+- **AppleScript** — Terminal automation (Terminal.app, iTerm2)
+
+### Build Steps
+
+1. **Install Xcode** from the Mac App Store
+
+2. **Open the project**
+   ```bash
+   open Shuttle.xcodeproj
+   ```
+
+3. **Configure code signing**
+   - In Xcode, select the **Shuttle** target
+   - Go to **Signing & Capabilities**
+   - Select your Team (personal or organization)
+   - Xcode will manage the signing certificate automatically
+
+4. **Build the application**
+   - Press **⌘B** to build, or **⌘R** to build and run
+   - The app appears in the menu bar (status bar icon, no Dock icon)
+
+5. **Create a release archive** (optional)
+   - Select **Product → Archive** (⌘⇧A) — requires the "Any Mac" destination
+   - In the Organizer, click **Distribute App**
+
+### Build from command line
+
+```bash
+# Build Debug
+xcodebuild -project Shuttle.xcodeproj -target Shuttle -configuration Debug build
+
+# Build Release
+xcodebuild -project Shuttle.xcodeproj -target Shuttle -configuration Release build
+
+# The .app bundle is generated in:
+# build/Release/Shuttle.app  (or build/Debug/Shuttle.app)
+```
+
+### Recompile AppleScripts (optional)
+
+Pre-compiled `.scpt` files are bundled. To recompile from source:
+
+```bash
+cd apple-scripts
+./compile-Terminal.sh
+./compile-iTermStable.sh
+./compile-iTermNightly.sh
+./compile-Virtual.sh
+```
+
+### macOS Permissions
+
+After launching Shuttle, macOS will prompt for **Automation** access:
+- Go to **System Settings → Privacy & Security → Automation**
+- Allow Shuttle to control **Terminal.app** and/or **iTerm2**
+
 ## Help
-See the [Wiki](https://github.com/fitztrev/shuttle/wiki) pages. 
+See the [Wiki](https://github.com/fitztrev/shuttle/wiki) pages.
 
 ## Roadmap
 

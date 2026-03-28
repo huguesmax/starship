@@ -5,6 +5,7 @@
 
 #import "AppDelegate.h"
 #import "AboutWindowController.h"
+#import "ConfigEditorWindowController.h"
 
 @implementation AppDelegate
 
@@ -62,29 +63,16 @@
         }
     }
     
-    // Define Icons
-    //only regular icon is needed for 10.10 and higher. OS X changes the icon for us.
+    // Define icon — template mode handles dark/light automatically
     regularIcon = [NSImage imageNamed:@"StatusIcon"];
-    altIcon = [NSImage imageNamed:@"StatusIconAlt"];
     
     // Create the status bar item
     statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
     [statusItem setMenu:menu];
-    [statusItem setImage: regularIcon];
+    statusItem.button.image = regularIcon;
     
-    // Check for AppKit Version, add support for darkmode if > 10.9
-    BOOL oldAppKitVersion = (floor(NSAppKitVersionNumber) <= 1265);
-    
-    // 10.10 or higher, dont load the alt image let OS X style it.
-    if (!oldAppKitVersion)
-    {
-        regularIcon.template = YES;
-    }
-    // Load the alt image for OS X < 10.10
-    else{
-        [statusItem setHighlightMode:YES];
-        [statusItem setAlternateImage: altIcon];
-    }
+    // Use template image so macOS handles dark/light mode automatically
+    regularIcon.template = YES;
     
     launchAtLoginController = [[LaunchAtLoginController alloc] init];
     // Needed to trigger the menuWillOpen event
@@ -112,115 +100,20 @@
 - (void)menuWillOpen:(NSMenu *)menu {
     // Check when the config was last modified
     if ( [self needUpdateFor:shuttleConfigFile with:configModified] ||
-        [self needUpdateFor:shuttleAltConfigFile with:configModified2] ||
-        [self needUpdateFor: @"/etc/ssh/ssh_config" with:sshConfigSystem] ||
-        [self needUpdateFor: @"~/.ssh/config" with:sshConfigUser]) {
+        [self needUpdateFor:shuttleAltConfigFile with:configModified2]) {
         
         configModified = [self getMTimeFor:shuttleConfigFile];
         configModified2 = [self getMTimeFor:shuttleAltConfigFile];
-        sshConfigSystem = [self getMTimeFor: @"/etc/ssh/ssh_config"];
-        sshConfigUser = [self getMTimeFor: @"~/.ssh/config"];
         
         [self loadMenu];
     }
 }
 
-// Parsing of the SSH Config File
-// Courtesy of https://gist.github.com/geeksunny/3376694
-- (NSDictionary<NSString *, NSDictionary *> *)parseSSHConfigFile {
-    
-    NSString *configFile = nil;
-    NSFileManager *fileMgr = [[NSFileManager alloc] init];
-    
-    // First check the system level configuration
-    if ([fileMgr fileExistsAtPath: @"/etc/ssh_config"]) {
-        configFile = @"/etc/ssh_config";
-    }
-    
-    // Fallback to check if actually someone used /etc/ssh/ssh_config
-    if ([fileMgr fileExistsAtPath: [@"~/.ssh/config" stringByExpandingTildeInPath]]) {
-        configFile = [@"~/.ssh/config" stringByExpandingTildeInPath];
-    }
-    
-    if (configFile == nil) {
-        // We did not find any config file so we gracefully die
-        return nil;
-    }
-    return [self parseSSHConfig:configFile];
-}
-
-- (NSDictionary<NSString *, NSDictionary *> *)parseSSHConfig:(NSString *)filepath {
-    // Get file contents into fh.
-    NSString *fh = [NSString stringWithContentsOfFile:filepath encoding:NSUTF8StringEncoding error:nil];
-    
-    // build the regex for matching
-    NSError* error = NULL;
-    NSRegularExpression* rx = [NSRegularExpression regularExpressionWithPattern:@"^(#?)[ \\t]*([^ \\t=]+)[ \\t=]+(.*)$"
-                                                                        options:0
-                                                                          error:&error];
-    
-    // create data store
-    NSMutableDictionary* servers = [[NSMutableDictionary alloc] init];
-    NSString* key = nil;
-    
-    // Loop through each line and parse the file.
-    for (NSString *line in [fh componentsSeparatedByString:@"\n"]) {
-        
-        // Strip line
-        NSString *trimmed = [line stringByTrimmingCharactersInSet:[ NSCharacterSet whitespaceCharacterSet]];
-        
-        // run the regex against the line
-        NSTextCheckingResult* matches = [rx firstMatchInString:trimmed
-                                                       options:0
-                                                         range:NSMakeRange(0, [trimmed length])];
-        if ([matches numberOfRanges] != 4) {
-            continue;
-        }
-        
-        BOOL isComment = [[trimmed substringWithRange:[matches rangeAtIndex:1]] isEqualToString:@"#"];
-        NSString* first = [trimmed substringWithRange:[matches rangeAtIndex:2]];
-        NSString* second = [trimmed substringWithRange:[matches rangeAtIndex:3]];
-        
-        // check for special comment key/value pairs
-        if (isComment && key && [first hasPrefix:@"shuttle."]) {
-            servers[key][[first substringFromIndex:8]] = second;
-        }
-        
-        // other comments must be skipped
-        if (isComment) {
-            continue;
-        }
-        
-        if ([first isEqualToString:@"Include"]) {
-            // Support for ssh_config Include directive.
-            NSString *includePath = ([second isAbsolutePath])
-                ? [second stringByExpandingTildeInPath]
-                : [[filepath stringByDeletingLastPathComponent] stringByAppendingPathComponent:second];
-            
-            [servers addEntriesFromDictionary:[self parseSSHConfig:includePath]];
-        }
-        
-        if ([first isEqualToString:@"Host"]) {
-            // a new host section
-            
-            // split multiple aliases on space and only save the first
-            NSArray* hostAliases = [second componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-            hostAliases = [hostAliases filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"SELF != ''"]];
-            key = [hostAliases firstObject];
-            servers[key] = [[NSMutableDictionary alloc] init];
-        }
-    }
-    
-    return servers;
-}
-
 
 - (void) loadMenu {
-    // Clear out the hosts so we can start over
-    NSUInteger n = [[menu itemArray] count];
-    for (int i=0;i<n-4;i++) {
-        [menu removeItemAtIndex:0];
-    }
+    // Remove ALL items to avoid stale supermenu references causing
+    // "Internal inconsistency in menus" errors
+    [menu removeAllItems];
     
     // Parse the config file
     NSData *data = [NSData dataWithContentsOfFile:shuttleConfigFile];
@@ -229,136 +122,59 @@
                                                 error:nil];
     // Check valid JSON syntax
     if ( !json ) {
-        NSMenuItem *menuItem = [menu insertItemWithTitle:NSLocalizedString(@"Error parsing config",nil)
-                                                  action:false
-                                           keyEquivalent:@""
-                                                 atIndex:0
-                                ];
-        [menuItem setEnabled:false];
-        return;
-    }
-    
-    terminalPref = [json[@"terminal"] lowercaseString];
-    editorPref = [json[@"editor"] lowercaseString];
-    iTermVersionPref = [json[@"iTerm_version"] lowercaseString];
-    openInPref = [json[@"open_in"] lowercaseString];
-    themePref = json[@"default_theme"];
-    launchAtLoginController.launchAtLogin = [json[@"launch_at_login"] boolValue];
-    shuttleHosts = json[@"hosts"];
-    ignoreHosts = json[@"ssh_config_ignore_hosts"];
-    ignoreKeywords = json[@"ssh_config_ignore_keywords"];
-    
-    //add hosts from the alternate json config
-    if (parseAltJSON) {
-        NSData *dataAlt = [NSData dataWithContentsOfFile:shuttleAltConfigFile];
-        id jsonAlt = [NSJSONSerialization JSONObjectWithData:dataAlt options:NSJSONReadingMutableContainers error:nil];
-        shuttleHostsAlt = jsonAlt[@"hosts"];
-        [shuttleHosts addObjectsFromArray:shuttleHostsAlt];
-    }
-    
-    // Should we merge ssh config hosts?
-    BOOL showSshConfigHosts = YES;
-    if ([[json allKeys] containsObject:(@"show_ssh_config_hosts")] && [json[@"show_ssh_config_hosts"] boolValue] == NO) {
-        showSshConfigHosts = NO;
-    }
-    
-    if (showSshConfigHosts) {
-        // Read configuration from ssh config
-        NSDictionary* servers = [self parseSSHConfigFile];
-        for (NSString* key in servers) {
-            BOOL skipCurrent = NO;
-            NSDictionary* cfg = [servers objectForKey:key];
-            
-            // get special name from config if set, fallback to the key
-            NSString* name = cfg[@"name"] ? cfg[@"name"] : key;
-            
-            // Ignore entries that contain wildcard characters
-            if ([name rangeOfString:@"*"].length != 0)
-                skipCurrent = YES;
-            
-            // Ignore entries that start with `.`
-            if ([name hasPrefix:@"."])
-                skipCurrent = YES;
-            
-            // Ignore entries whose name matches exactly any of the values in ignoreHosts
-            for (NSString* ignore in ignoreHosts) {
-                if ([name isEqualToString:ignore]) {
-                    skipCurrent = YES;
-                }
-            }
-            
-            // Ignore entries whose name contains any of the values in ignoreKeywords
-            for (NSString* ignore in ignoreKeywords) {
-                if ([name rangeOfString:ignore].location != NSNotFound) {
-                    skipCurrent = YES;
-                }
-            }
-            
-            if (skipCurrent) {
-                continue;
-            }
-            
-            // Split the host into parts separated by / - the last part is the name for the leaf in the tree
-            NSMutableArray* path = [NSMutableArray arrayWithArray:[name componentsSeparatedByString:@"/"]];
-            NSString* leaf = [path lastObject];
-            if (leaf == nil)
-                continue;
-            [path removeLastObject];
-            
-            NSMutableArray* itemList = shuttleHosts;
-            for (NSString *part in path) {
-                BOOL createList = YES;
-                for (NSDictionary* item in itemList) {
-                    // if we encounter an item with cmd/name then we have to bail
-                    // since there's no way we can dig deeper here
-                    if (item[@"cmd"] || item[@"name"]) {
-                        continue;
-                    }
-                    
-                    // if this item has the name of our target check if we can
-                    // reuse it (if it's an array) - or if we need to bail
-                    if (item[part]) {
-                        // make sure this is an array and not an object
-                        if ([item[part] isKindOfClass:[NSArray class]]) {
-                            itemList = item[part];
-                            createList = NO;
-                        } else {
-                            itemList = nil;
-                        }
-                        break;
-                    }
-                }
-                
-                if (itemList == nil) {
-                    // things gone south... there's already something present and it's
-                    // not an array...
-                    break;
-                }
-                
-                if (createList) {
-                    // create a new entry and set it as itemList
-                    NSMutableArray *newList = [[NSMutableArray alloc] init];
-                    [itemList addObject:[NSDictionary dictionaryWithObject:newList
-                                                                    forKey:part]];
-                    itemList = newList;
-                }
-            }
-            
-            // if everything worked out we will see a non-nil itemList where the
-            // system should be appended to. part hold the last part of the splitted string (aka hostname).
-            if (itemList) {
-                // build the corresponding ssh command
-                NSString* cmd = [NSString stringWithFormat:@"ssh %@", key];
-                
-                // inject the data into the json parser result
-                [itemList addObject:[NSDictionary dictionaryWithObjects:[NSArray arrayWithObjects:leaf, cmd, nil]
-                                                                forKeys:[NSArray arrayWithObjects:@"name", @"cmd", nil]]];
-            }
+        NSMenuItem *menuItem = [[NSMenuItem alloc] initWithTitle:NSLocalizedString(@"Error parsing config",nil)
+                                                          action:nil
+                                                   keyEquivalent:@""];
+        [menuItem setEnabled:NO];
+        [menu addItem:menuItem];
+    } else {
+        terminalPref = [json[@"terminal"] lowercaseString];
+        editorPref = [json[@"editor"] lowercaseString];
+        iTermVersionPref = [json[@"iTerm_version"] lowercaseString];
+        openInPref = [json[@"open_in"] lowercaseString];
+        themePref = json[@"default_theme"];
+        launchAtLoginController.launchAtLogin = [json[@"launch_at_login"] boolValue];
+        shuttleHosts = json[@"hosts"];
+        //add hosts from the alternate json config
+        if (parseAltJSON) {
+            NSData *dataAlt = [NSData dataWithContentsOfFile:shuttleAltConfigFile];
+            id jsonAlt = [NSJSONSerialization JSONObjectWithData:dataAlt options:NSJSONReadingMutableContainers error:nil];
+            shuttleHostsAlt = jsonAlt[@"hosts"];
+            [shuttleHosts addObjectsFromArray:shuttleHostsAlt];
         }
+        
+        // feed the final result into the recursive method which builds the menu
+        [self buildMenu:shuttleHosts addToMenu:menu];
     }
     
-    // feed the final result into the recursive method which builds the menu
-    [self buildMenu:shuttleHosts addToMenu:menu];
+    // Re-add the static items at the bottom
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    NSMenuItem *settingsItem = [[NSMenuItem alloc] initWithTitle:@"Settings" action:nil keyEquivalent:@""];
+    NSMenu *settingsMenu = [[NSMenu alloc] initWithTitle:@"Settings"];
+    
+    NSMenuItem *editItem = [[NSMenuItem alloc] initWithTitle:@"Edit" action:@selector(configure:) keyEquivalent:@""];
+    editItem.target = self;
+    [settingsMenu addItem:editItem];
+    
+    NSMenuItem *exportItem = [[NSMenuItem alloc] initWithTitle:@"Export" action:@selector(showExportPanel:) keyEquivalent:@""];
+    exportItem.target = self;
+    [settingsMenu addItem:exportItem];
+    
+    NSMenuItem *importItem = [[NSMenuItem alloc] initWithTitle:@"Import" action:@selector(showImportPanel:) keyEquivalent:@""];
+    importItem.target = self;
+    [settingsMenu addItem:importItem];
+    
+    [settingsItem setSubmenu:settingsMenu];
+    [menu addItem:settingsItem];
+    
+    NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:@"About" action:@selector(showAbout:) keyEquivalent:@""];
+    aboutItem.target = self;
+    [menu addItem:aboutItem];
+    
+    NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:@"Quit" action:@selector(quit:) keyEquivalent:@""];
+    quitItem.target = self;
+    [menu addItem:quitItem];
 }
 
 - (void) buildMenu:(NSArray*)data addToMenu:(NSMenu *)m {
@@ -563,8 +379,8 @@
     else {
         passParameters = @[escapedObject, terminalTitle];
     }
-    // Check if Url
-    if (url)
+    // Check if Url — only open actual web URLs, not ssh:// or other schemes
+    if (url && ([@"http" isEqualToString:url.scheme] || [@"https" isEqualToString:url.scheme]))
         {
             [[NSWorkspace sharedWorkspace] openURL:url];
             
@@ -707,7 +523,7 @@
 - (IBAction)showImportPanel:(id)sender {
     NSOpenPanel * openPanelObj	= [NSOpenPanel openPanel];
     NSInteger tvarNSInteger	= [openPanelObj runModal];
-    if(tvarNSInteger == NSOKButton){
+    if(tvarNSInteger == NSModalResponseOK){
         //Backup the current configuration
         [[NSFileManager defaultManager] moveItemAtPath:shuttleConfigFile toPath: [NSHomeDirectory() stringByAppendingPathComponent:@".shuttle.json.backup"] error: nil];
         
@@ -727,7 +543,7 @@
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setInformativeText:errorInfo];
     [alert setMessageText:errorMessage];
-    [alert setAlertStyle:NSWarningAlertStyle];
+    [alert setAlertStyle:NSAlertStyleWarning];
     
     if (continueOption) {
         [alert addButtonWithTitle:NSLocalizedString(@"Quit",nil)];
@@ -746,7 +562,7 @@
     NSSavePanel * savePanelObj	= [NSSavePanel savePanel];
     //Display the Save Panel
     NSInteger result	= [savePanelObj runModal];
-    if (result == NSFileHandlingPanelOKButton) {
+    if (result == NSModalResponseOK) {
         NSURL *saveURL = [savePanelObj URL];
         // then copy a previous file to the new location
         [[NSFileManager defaultManager] copyItemAtPath:shuttleConfigFile toPath:saveURL.path error:nil];
@@ -754,28 +570,18 @@
 }
 
 - (IBAction)configure:(id)sender {
-    
-    //if the editor setting is omitted or contains 'default' open using the default editor.
-    if([editorPref rangeOfString:@"default"].location != NSNotFound) {
-        
-        [[NSWorkspace sharedWorkspace] openFile:shuttleConfigFile];
+    // If editor is already open, bring it to front
+    if (self.configEditorController.window.isVisible) {
+        [NSApp activateIgnoringOtherApps:YES];
+        [self.configEditorController.window makeKeyAndOrderFront:nil];
+        return;
     }
-    else{
-        //build the editor command
-        NSString *editorCommand = [NSString stringWithFormat:@"%@ %@", editorPref, shuttleConfigFile];
-        
-        //build the reprensented object. It's expecting menuCmd, termTheme, termTitle, termWindow, menuName
-        NSString *editorRepObj = [NSString stringWithFormat:@"%@¬_¬%@¬_¬%@¬_¬%@¬_¬%@", editorCommand, nil, @"Editing shuttle JSON", nil, nil];
-        
-        //make a menu item for the command selector(openHost:) runs in a new terminal window.
-        NSMenuItem *editorMenu = [[NSMenuItem alloc] initWithTitle:@"editJSONconfig" action:@selector(openHost:) keyEquivalent:(@"")];
-        
-        //set the command for the menu item
-        [editorMenu setRepresentedObject:editorRepObj];
-        
-        //open the JSON file in the terminal editor.
-        [self openHost:editorMenu];
-    }
+
+    self.configEditorController = [[ConfigEditorWindowController alloc]
+        initWithConfigPath:shuttleConfigFile];
+    [self.configEditorController.window setLevel:NSFloatingWindowLevel];
+    [NSApp activateIgnoringOtherApps:YES];
+    [self.configEditorController showWindow:self];
 }
 
 - (IBAction)showAbout:(id)sender {
